@@ -7,101 +7,84 @@ import (
 	"encoding/pem"
 	"log"
 	"os"
-	"runtime"
 )
 
 type RSACredManager struct{}
-const (
-	privateFileName="private.pem"
-	publicFileName="public.pem"
-	privateKeyPrefix="RSA PRIVATE KEY "
-	publicKeyPrefix="RSA PUBLIC KEY "
-)
+
 func NewRSA() *RSACredManager {
 	cm := &RSACredManager{}
 	return cm
 }
 
-func (cm *RSACredManager)Encrypt(plainText ,key []byte)(cryptText []byte,err error){
-	block, _:= pem.Decode(key)
-	defer func(){
-		if err:=recover();err!=nil{
-			switch err.(type){
-			case runtime.Error:
-				log.Println("runtime err:",err,"Check that the key is correct")
-			default:
-				log.Println("error:",err)
-			}
-		}
-	}()
-	publicKeyInterface,err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err!=nil{
-		return nil,err
+func (cm *RSACredManager) Encrypt(plainText, key []byte) (cryptText []byte, err error) {
+	block, _ := pem.Decode(key)
+	if block == nil || block.Type != "PUBLIC KEY" {
+		log.Fatal("failed to decode PEM block containing private key")
+	}
+	publicKeyInterface, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, err
 	}
 	publicKey := publicKeyInterface.(*rsa.PublicKey)
 
 	cipherText, err := rsa.EncryptPKCS1v15(rand.Reader, publicKey, plainText)
-	if err!=nil{
-		return nil,err
-	}
-	return cipherText,nil
-}
-
-func (cm *RSACredManager)Decrypt(cryptText ,key []byte)(plainText []byte,err error){
-	block, _ := pem.Decode(key)
-
-	defer func(){
-		if err:=recover();err!=nil{
-			switch err.(type){
-			case runtime.Error:
-				log.Println("runtime err:",err,"Check that the key is correct")
-			default:
-				log.Println("error:",err)
-			}
-		}
-	}()
-	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err!=nil{
-		return []byte{},err
-	}
-	plainText,err= rsa.DecryptPKCS1v15(rand.Reader, privateKey, cryptText)
-	if err!=nil{
-		return []byte{},err
-	}
-	return plainText,nil
-}
-
-func (cm *RSACredManager)GenerateKey()error{
-	privateKey, err:= rsa.GenerateKey(rand.Reader, 2048)
-	if err!=nil{
-		return err
-	}
-	x509PrivateKey := x509.MarshalPKCS1PrivateKey(privateKey)
-	privateFile, err := os.Create(privateFileName)
-	if err!=nil{
-		return err
-	}
-	defer privateFile.Close()
-	privateBlock := pem.Block{
-		Type:privateKeyPrefix,
-		Bytes:x509PrivateKey,
-	}
-
-	if err=pem.Encode(privateFile,&privateBlock);err!=nil{
-		return err
-	}
-	publicKey := privateKey.PublicKey
-	x509PublicKey, err := x509.MarshalPKIXPublicKey(&publicKey)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	publicFile,_ :=os.Create(publicFileName)
-	defer publicFile.Close()
-	publicBlock := pem.Block{
-		Type:publicKeyPrefix,
-		Bytes:x509PublicKey,
+	return cipherText, nil
+}
+
+func (cm *RSACredManager) Decrypt(cryptText, key []byte) (plainText []byte, err error) {
+	block, _ := pem.Decode(key)
+	if block == nil || block.Type != "PRIVATE KEY" {
+		log.Fatal("failed to decode PEM block containing private key")
 	}
-	if err=pem.Encode(publicFile,&publicBlock);err!=nil{
+	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		return []byte{}, err
+	}
+	plainText, err = rsa.DecryptPKCS1v15(rand.Reader, privateKey, cryptText)
+	if err != nil {
+		return []byte{}, err
+	}
+	return plainText, nil
+}
+
+func (cm *RSACredManager) GenerateKey(bits int) error {
+	// make private.pem
+	privateKey, err := rsa.GenerateKey(rand.Reader, bits)
+	if err != nil {
+		return err
+	}
+	derStream := x509.MarshalPKCS1PrivateKey(privateKey)
+	block := &pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: derStream,
+	}
+	file, err := os.Create("private.pem")
+	if err != nil {
+		return err
+	}
+	err = pem.Encode(file, block)
+	if err != nil {
+		return err
+	}
+	// make public.pem
+	publicKey := &privateKey.PublicKey
+	derPkix, err := x509.MarshalPKIXPublicKey(publicKey)
+	if err != nil {
+		return err
+	}
+	block = &pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: derPkix,
+	}
+	file, err = os.Create("public.pem")
+	if err != nil {
+		return err
+	}
+	err = pem.Encode(file, block)
+	if err != nil {
 		return err
 	}
 	return nil
