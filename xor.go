@@ -1,14 +1,17 @@
 package cred
 
-func XorEncryptDecrypt(data, key string) string {
-	encryptedData := make([]byte, len(data))
-	keyLength := len(key)
+import (
+	"strings"
+)
 
-	for i, char := range data {
-		keyChar := key[i%keyLength]
-		encryptedChar := byte(char) ^ keyChar
-		encryptedData[i] = encryptedChar
+func XorEncryptDecrypt(data, key string) string {
+	var encryptedData []string
+	keyLength := len(key)
+	for i, char := range []rune(data) {
+		keyChar := rune(key[i%keyLength])
+		encryptedChar := string(char ^ keyChar)
+		encryptedData = append(encryptedData, encryptedChar)
 	}
 
-	return string(encryptedData)
+	return strings.Join(encryptedData, "")
 }
